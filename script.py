@@ -135,3 +135,69 @@ print('Number of calls to f.gradient:', f.getGradientCallsNumber() - c2)
 print('Number of calls to f.hessian:', f.getHessianCallsNumber() - c3)
 
 
+#### 2)
+
+# La probabilité de E1 est de l'ordre de 0.06, pour avoir un écart-type de l'ordre 
+# de 0.1 * 0.06, il faut faire environ 1 / (0.1**2 * 0.06) évalutations (env. 1666)
+
+# La probabilité de E2 est de l'ordre de 0.8, pour avoir un écart-type de l'ordre 
+# de 0.1 * 0.8, il faut faire environ 1 / (0.1**2 * 0.8) évalutations (env. 125)
+
+#### 3)
+monte_carlo = ot.MonteCarloExperiment(X.getDistribution(), 1700)
+verbose = True
+convergenceStrategy=ot.Compact()
+simu = ot.ProbabilitySimulationAlgorithm(E1, monte_carlo, verbose, convergenceStrategy)
+simu.setBlockSize(2) ## number of cpu
+simu.setMaximumOuterSampling(1000)
+simu.run()
+print('Probability estimate of E1 = %.6f' % simu.getResult().getProbabilityEstimate())
+
+monte_carlo = ot.MonteCarloExperiment(X.getDistribution(), 125)
+verbose = True
+convergenceStrategy=ot.Compact()
+simu = ot.ProbabilitySimulationAlgorithm(E2, monte_carlo, verbose, convergenceStrategy)
+simu.setBlockSize(2) ## number of cpu
+simu.setMaximumOuterSampling(1000)
+simu.run()
+print('Probability estimate of E2 = %.6f' % simu.getResult().getProbabilityEstimate())
+
+
+
+#### 1)
+
+T_evac  = ot.Uniform(90*60, 120*60)
+T_stabi = ot.Uniform(3*60*60, 4*60*60)
+
+marginals = [Z, gamma_g, k_er, tau_c, Rd, Rmax, T_evac, T_stabi]
+Xtilde_loi = ot.ComposedDistribution(marginals)
+Xtilde = ot.RandomVector(Xtilde_loi)
+
+#### 2)
+
+f_tilde_evac = ot.SymbolicFunction(['Z', 'gamma_g', 'k_er', 'tau_c', 'Rd', 'Rmax', 'T_evac', 'T_stabi'],
+                        ['Z * gamma_g / (9.81 * k_er) * log( (Rmax - Z * tau_c) / (Rd - Z * tau_c) ) - T_evac'])
+Ytilde_evac = ot.RandomVector(f_tilde_evac, Xtilde)
+
+f_tilde_stabi = ot.SymbolicFunction(['Z', 'gamma_g', 'k_er', 'tau_c', 'Rd', 'Rmax', 'T_evac', 'T_stabi'],
+                        ['Z * gamma_g / (9.81 * k_er) * log( (Rmax - Z * tau_c) / (Rd - Z * tau_c) ) - T_stabi'])
+Ytilde_stabi = ot.RandomVector(f_tilde_stabi, Xtilde)
+
+#### 3)
+E1_tilde = ot.Event(Ytilde_evac, ot.Less(), 0) # E1 : le barrage s'effondre avant l'evacuation
+E2_tilde = ot.Event(Ytilde_stabi, ot.Greater(), 0) # E2 : le barrage peut être stabilisé
+
+#### 4)
+print("FORM")
+
+solver = ot.SQP()
+form = ot.FORM(solver, E1_tilde, Xtilde.getMean())
+form.run()
+result = form.getResult()
+print("Probability of E1_tilde :", result.getEventProbability())
+
+solver = ot.SQP()
+form = ot.FORM(solver, E2_tilde, Xtilde.getMean())
+form.run()
+result = form.getResult()
+print("Probability of E2_tilde :", result.getEventProbability())
